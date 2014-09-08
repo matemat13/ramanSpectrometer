@@ -18,18 +18,21 @@ ping_pong_com = 1
 uC_endianity = 'little_endian'
 uC_ADC_bit_count = 12
 uC_ADC_max_val = pow(2, uC_ADC_bit_count)-1
+signalElements = 3648
 
-data = []
+xaxis = range(0, signalElements)
+data = [0]*signalElements
+line = ""
 
 def killOldData():																																	# set the file mode to append binary
      global data
-     data = []
+     data = [0]*signalElements
 
 def getSpectra3():
     global data    
-    with serial.Serial('COM8', 230400, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, 0.1) as mcu: 												# setup serial for communication to Nucelo
+    with serial.Serial('COM8', 460800, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
 
-        chunk_len = 1000;
+        chunk_len = 64;
         total_len = 7296;
         to_read = chunk_len;  
         buffer = bytes
@@ -38,31 +41,46 @@ def getSpectra3():
         errors = 0
         i = 0        
         all_read = 0
+        delay_t = 0.005
         
         mcu.flush()
-        mcu.write(b'g')  
+        mcu.write(b'g')
+        time.sleep(delay_t)
         
         
        # time.sleep(0.024)
         while all_read == 0:
             if i == int(total_len/chunk_len):
-                to_read = total_len%chunk_len;
-            buffer = mcu.read(to_read)
-            read = len(buffer)
+                to_read = total_len%chunk_len
+            
+            buffer = mcu.read(1)
+            #if len(buffer) != 0:
+             #   print(buffer[0])
+            
+            if (len(buffer) == 0 or buffer[0] != i):
+                read = 0
+            else:
+                buffer = mcu.read(to_read)
+                read = len(buffer)
+            
             if read == to_read:
+                mcu.flushInput()
+                mcu.flushOutput()
                 time.sleep(0.002)
-                mcu.flush()
-                #print("writing y cycle: %d" %i)
+               # print("Cycle: %d OK" %i)
                 mcu.write(b'y')
+                time.sleep(delay_t)
                 #print(" --written");
                 i = i+1
                 main_bfr = main_bfr + buffer
             else:
-                #print("Read only %dB of %d" % (read,to_read))
-                time.sleep(0.002)
-                mcu.flush()
+               # print("Read only %dB of %d in cycle %d" % (read,to_read,i))
+                #mcu.read(mcu.inWaiting())
+                mcu.flushInput()
+                mcu.flushOutput()
                 #print("writing r cycle: %d" %i)
                 mcu.write(b'r')
+                time.sleep(delay_t)
                 #print(" --written");
                 errors = errors+1
             if i == int(total_len/chunk_len+1):
@@ -73,8 +91,34 @@ def getSpectra3():
         fmt = "<%dh" % (3648)
         data = struct.unpack(fmt, main_bfr)
         mcu.write(b's')
-        
 
+def moveon(event):
+    plt.close()
+
+fig = None
+line = None
+def setupPlot():
+    global fig
+    global line
+    plt.ion()
+    fig = plt.figure()
+    subplot = fig.add_subplot(1, 1, 1, axisbg='black')
+    plt.title(plot_Title, fontsize=24, color='black')
+    plt.xlabel('pixelNumber', fontsize=16, color='red')																				# set the x label on the graph
+    plt.ylabel('intensity', fontsize=16, color='blue')
+    plt.ylim([0,uC_ADC_max_val])
+    plt.xlim([0,signalElements]) 
+
+    line, = subplot.plot(xaxis, data, 'r-', color = 'white')
+    plt.show(block=False)
+
+def replotSpectra():
+    global fig
+    global line
+#    line.set_xdata(xaxis)
+    line.set_ydata(data)  # update the data
+    fig.canvas.draw()#.plot(xaxis, data, color = 'white', lw=1)
+    #plt.draw() # update the plot
 
 def plotSpectra():
 	x1 = []                                                                 																					# initialize the X coord
@@ -86,7 +130,8 @@ def plotSpectra():
           curx += 1
           y1.append(intensity)
 
-	fig = plt.figure(1)
+	fig = plt.figure()
+	fig.add_subplot(1, 1, 1, axisbg='black')
 	ax = fig.add_subplot(111, axisbg='black')
 	rect = fig.patch # a rectangle instance
 	rect.set_facecolor('lightslategray')	
@@ -102,7 +147,13 @@ def plotSpectra():
 def getNewSample():
     with serial.Serial('COM8', 230400, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, 0.1) as mcu: 												# setup serial for communication to Nucelo
         mcu.write(b's') #tell mcu to get a sample
-        
+
+def continuousPlot():
+    setupPlot()
+    while (True):
+        getSpectra3()
+        replotSpectra()
+
 def startSpectraCapture():
             print ("Aquiring spectra......")
             getSpectra3()
@@ -117,9 +168,13 @@ def startSpectraCapture():
             print ("Done...")
 
 
+
 plot_Title = 'meridianScientific DIY 3D Printable RaspberryPi Raman Spectrometer'
 os.system('cls')
 getNewSample()
+
+
+#plt.ion()
 
 while(1):
      #os.system('cls')
@@ -130,13 +185,16 @@ while(1):
      print ("0 - Quit")
      print ("1 - Get sample and plot")
      print ("2 - Get new sample from CCD")
+     print ("3 - Plot continuously")
      req = input("Enter your choice..")
      
      print(req)
      if req == "1":
           startSpectraCapture()
-     if req == "1":
+     if req == "2":
           getNewSample()
+     if req == "3":
+          continuousPlot()
      if req == "0":
           print ("Quitting")
           break
