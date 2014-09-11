@@ -64,17 +64,15 @@ short readShort()
 //sends the buffered data over serial port in chunks
 void send_data()
 {
+ LED = 1;
  bool all_sent = false;
- int chunk_len = 1000;
+ int chunk_len = 180;
  int total_len = 7296;
- int pixelNumber = 0;
+ int byte_n = 0;
  int to_send = 0;
  int oldsent;
  
- //for (int i = 0; i < total_len; i++)
- // raspi.putc(b_pixelValue[pixelNumber]);
- 
- for (int chunk_n = 0; chunk_n < total_len/chunk_len+1; chunk_n++)
+ for (char chunk_n = 0; chunk_n < total_len/chunk_len+1; chunk_n++)
  {
      oldsent = to_send;
      if (chunk_n == total_len/chunk_len)
@@ -85,21 +83,21 @@ void send_data()
      
      while (!all_sent)
      {
-      for (; pixelNumber < to_send; pixelNumber++)
+      raspi.putc(chunk_n);
+      for (; byte_n < to_send; byte_n++)
       {
-       raspi.putc(b_pixelValue[pixelNumber]);
+       raspi.putc(b_pixelValue[byte_n]);
       }
       if (raspi.getc() == 'y')
       {
        all_sent = true;
       } else
       {
-       pixelNumber = oldsent;
+       byte_n = oldsent;
       }
      }
  }
- 
- return;
+ LED = 0;
 }
 
 //main sampling function
@@ -205,6 +203,16 @@ int main()
     shiftGate.pulsewidth_us(shiftGate_width);
 
     raspi.baud(BAUDRATE);
+    
+    //Set parity to odd
+    //USART2->CR1 &= 0xFFFFF9FF;
+    //USART2->CR1 |= 0x00000600;
+    
+    //Set two stopbits
+    USART2->CR2 &= 0xFFFFCFFF;
+    USART2->CR2 |= 0x00002000;
+    //enable CTR & RTS
+    USART2->CR3 |= 0x00000300;
 
     shiftGate_int.rise(checkState);
     

@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Aug 19 01:40:03 2014
 
-@author: fl@c@
-"""
 import matplotlib.pyplot as plt
 import serial
 import struct
@@ -11,10 +7,9 @@ import time
 import numpy as np
 import os
 
-fname = 'spectra.dat'																																	# set the file name to spectra.dat
-fmode = 'ab'
-read_mode = 'textual'
-ping_pong_com = 1
+
+
+
 uC_endianity = 'little_endian'
 uC_ADC_bit_count = 12
 uC_ADC_max_val = pow(2, uC_ADC_bit_count)-1
@@ -24,15 +19,19 @@ xaxis = range(0, signalElements)
 data = [0]*signalElements
 line = ""
 
+
+mcu = serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_TWO, timeout=0.02, xonxoff=False, rtscts=True)
+
+
 def killOldData():																																	# set the file mode to append binary
      global data
      data = [0]*signalElements
 
 def getSpectra3():
-    global data    
-    with serial.Serial('COM8', 460800, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
+        global data    
+    #with serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
 
-        chunk_len = 64;
+        chunk_len = 180;
         total_len = 7296;
         to_read = chunk_len;  
         buffer = bytes
@@ -44,6 +43,8 @@ def getSpectra3():
         delay_t = 0.005
         
         mcu.flush()
+        mcu.flushInput()
+        mcu.flushOutput()
         mcu.write(b'g')
         time.sleep(delay_t)
         
@@ -145,7 +146,7 @@ def plotSpectra():
 	plt.show()                                                              																					# show the graph
 
 def getNewSample():
-    with serial.Serial('COM8', 230400, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, 0.1) as mcu: 												# setup serial for communication to Nucelo
+    #with serial.Serial('COM8', 230400, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, 0.1) as mcu: 												# setup serial for communication to Nucelo
         mcu.write(b's') #tell mcu to get a sample
 
 def continuousPlot():
@@ -170,6 +171,8 @@ def startSpectraCapture():
 
 
 plot_Title = 'meridianScientific DIY 3D Printable RaspberryPi Raman Spectrometer'
+
+mcu.sendBreak()
 os.system('cls')
 getNewSample()
 
@@ -198,3 +201,5 @@ while(1):
      if req == "0":
           print ("Quitting")
           break
+
+mcu.close()
