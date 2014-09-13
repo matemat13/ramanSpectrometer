@@ -20,7 +20,7 @@ data = [0]*signalElements
 line = ""
 
 
-mcu = serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_TWO, timeout=0.02, xonxoff=False, rtscts=True)
+mcu = serial.Serial('COM8', 470588, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_TWO, timeout=0.04, xonxoff=False, rtscts=True)
 
 
 def killOldData():																																	# set the file mode to append binary
@@ -31,9 +31,9 @@ def getSpectra3():
         global data    
     #with serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
 
-        chunk_len = 64;
+        chunk_len = 512;
         total_len = 7296;
-        to_read = chunk_len;  
+        to_read = chunk_len;
         buffer = b''
         main_bfr = b''
         read = 0
@@ -62,41 +62,48 @@ def getSpectra3():
             
             if (len(buffer) == 0 or buffer[0] != i):
                 read_ok = False
+                if (len(buffer) != 0):
+                  print("Chunk number read: %d, should be: %d. Data remaining: %d" % (buffer[0], i, mcu.inWaiting()))
+                else:
+                  print("Chunk number timed out")
             else:
                 buffer = mcu.read(to_read)
                 read = len(buffer)
             
-            if read == to_read:
+            if read_ok and read == to_read:
                 checksum = mcu.read(1)
                 if (len(checksum) == 0 or checksum[0] != (sum(buffer)+1)%256):
                   read_ok = False
-                  #if (len(checksum) != 0):
-                  #  print("Checksum read: %d, should be: %d" % (checksum[0], (sum(buffer)+1)%256))
-                  #else:
-                  #  print("Checksum timed out")
+                  if (len(checksum) != 0):
+                    print("Checksum read: %d, should be: %d" % (checksum[0], (sum(buffer)+1)%256))
+                  else:
+                    print("Checksum timed out")
             else:
+                if (read_ok):
+                  print("Read only %dB of %d in cycle %d" % (read,to_read,i))
                 read_ok = False
                 
             if read_ok:
                 mcu.flushInput()
                 mcu.flushOutput()
-                time.sleep(0.002)
+                time.sleep(delay_t)
                # print("Cycle: %d OK" %i)
                 mcu.write(b'y')
-                time.sleep(delay_t)
+                #time.sleep(delay_t)
                 #print(" --written");
                 i = i+1
                 main_bfr = main_bfr + buffer
             else:
+                errors = errors+1
                 #print("Read only %dB of %d in cycle %d" % (read,to_read,i))
                 #mcu.read(mcu.inWaiting())
                 mcu.flushInput()
                 mcu.flushOutput()
                 #print("writing r cycle: %d" %i)
-                mcu.write(b'r')
                 time.sleep(delay_t)
+                mcu.write(b'r')
+                #time.sleep(delay_t)
                 #print(" --written");
-                errors = errors+1
             if i == int(total_len/chunk_len+1):
                 all_read = True
         
@@ -151,7 +158,7 @@ def replotSpectra():
     fig.canvas.blit(subplot.bbox)
     
     #fig.canvas.draw()#.plot(xaxis, data, color = 'white', lw=1)
-    #plt.pause(0.00001)
+    plt.pause(0.00001)
     #plt.draw() # update the plot
 
 def plotSpectra():
@@ -209,7 +216,6 @@ mcu.sendBreak()
 os.system('cls')
 getNewSample()
 
-print((sum(b"aaa")+1)%256)
 #plt.ion()
 
 while(1):

@@ -66,12 +66,14 @@ void send_data()
 {
  LED = 1;
  bool all_sent = false;
- int chunk_len = 64;
+ int chunk_len = 512;
  int total_len = 7296;
  int byte_n = 0;
  int to_send = 0;
  int oldsent;
  int checksum;
+ 
+ shiftGate_int.disable_irq();
  
  for (char chunk_n = 0; chunk_n < total_len/chunk_len+1; chunk_n++)
  {
@@ -85,7 +87,9 @@ void send_data()
      
      while (!all_sent)
      {
+      wait_ms(2);
       checksum = 0;
+      
       
       raspi.putc(chunk_n);
       for (; byte_n < to_send; byte_n++)
@@ -106,6 +110,59 @@ void send_data()
       }
      }
  }
+ /*
+ while (!all_sent)
+ {
+   for (; chunk_n < total_len/chunk_len+1; chunk_n++)
+   {
+    // oldsent = to_send;
+     if (chunk_n == total_len/chunk_len)
+         to_send = total_len;
+     else
+         to_send += chunk_len;
+     
+     chunk_sent = false;
+     
+     while (!chunk_sent)
+     {
+      checksum = 0;
+      
+      raspi.putc(chunk_n);
+      for (; byte_n < to_send; byte_n++)
+      {
+       //checksum += b_pixelValue[byte_n];
+       //raspi.putc(b_pixelValue[byte_n]);
+       checksum += chunk_n + 3;
+       raspi.putc(chunk_n + 3);
+      }
+      
+      checksum += 1;
+      raspi.putc(checksum%256);
+      
+      if (raspi.readable() && raspi.getc() == 'r')
+      {
+       chunk_n = raspi.getc();
+       byte_n = chunk_len*chunk_n;
+      } else
+      {
+       chunk_sent = true;
+      }
+      wait_ms(15);
+     }
+   }
+   if (raspi.getc() != 'y')
+   {
+    chunk_n = raspi.getc();
+    byte_n = chunk_len*chunk_n;
+    wait_ms(15);
+   } else
+   {
+    all_sent = true;
+   }
+ }*/
+ 
+ shiftGate_int.enable_irq();
+ 
  LED = 0;
 }
 
@@ -220,7 +277,7 @@ int main()
     //Set two stopbits
     USART2->CR2 &= 0xFFFFCFFF;
     USART2->CR2 |= 0x00002000;
-    //enable CTR & RTS
+    //enable CTS & RTS
     USART2->CR3 |= 0x00000300;
 
     shiftGate_int.rise(checkState);
