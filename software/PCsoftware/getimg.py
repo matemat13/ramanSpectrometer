@@ -31,10 +31,10 @@ def getSpectra3():
         global data    
     #with serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
 
-        chunk_len = 64;
+        chunk_len = 180;
         total_len = 7296;
         to_read = chunk_len;  
-        buffer = b''
+        buffer = bytes
         main_bfr = b''
         read = 0
         errors = 0
@@ -45,39 +45,26 @@ def getSpectra3():
         mcu.flush()
         mcu.flushInput()
         mcu.flushOutput()
-        start_T = time.clock()
         mcu.write(b'g')
         time.sleep(delay_t)
         
         
        # time.sleep(0.024)
-        while not all_read:
+        while all_read == 0:
             if i == int(total_len/chunk_len):
                 to_read = total_len%chunk_len
             
-            read_ok = True
-           
-            #read the checksum number
             buffer = mcu.read(1)
+            #if len(buffer) != 0:
+             #   print(buffer[0])
             
             if (len(buffer) == 0 or buffer[0] != i):
-                read_ok = False
+                read = 0
             else:
                 buffer = mcu.read(to_read)
                 read = len(buffer)
             
             if read == to_read:
-                checksum = mcu.read(1)
-                if (len(checksum) == 0 or checksum[0] != (sum(buffer)+1)%256):
-                  read_ok = False
-                  #if (len(checksum) != 0):
-                  #  print("Checksum read: %d, should be: %d" % (checksum[0], (sum(buffer)+1)%256))
-                  #else:
-                  #  print("Checksum timed out")
-            else:
-                read_ok = False
-                
-            if read_ok:
                 mcu.flushInput()
                 mcu.flushOutput()
                 time.sleep(0.002)
@@ -88,7 +75,7 @@ def getSpectra3():
                 i = i+1
                 main_bfr = main_bfr + buffer
             else:
-                #print("Read only %dB of %d in cycle %d" % (read,to_read,i))
+               # print("Read only %dB of %d in cycle %d" % (read,to_read,i))
                 #mcu.read(mcu.inWaiting())
                 mcu.flushInput()
                 mcu.flushOutput()
@@ -98,11 +85,9 @@ def getSpectra3():
                 #print(" --written");
                 errors = errors+1
             if i == int(total_len/chunk_len+1):
-                all_read = True
+                all_read = 1
         
-        
-        delta_T = time.clock() - start_T
-        print ("errors: %d, duration: %fs" % (errors, delta_T))
+        print ("errors: ", errors)
         #print("read: %d" %len(main_bfr))
         fmt = "<%dh" % (3648)
         data = struct.unpack(fmt, main_bfr)
@@ -113,13 +98,9 @@ def moveon(event):
 
 fig = None
 line = None
-subplot = None
-plot_bg = None
 def setupPlot():
     global fig
     global line
-    global subplot
-    global plot_bg
     plt.ion()
     fig = plt.figure()
     subplot = fig.add_subplot(1, 1, 1, axisbg='black')
@@ -127,31 +108,17 @@ def setupPlot():
     plt.xlabel('pixelNumber', fontsize=16, color='red')																				# set the x label on the graph
     plt.ylabel('intensity', fontsize=16, color='blue')
     plt.ylim([0,uC_ADC_max_val])
-    plt.xlim([0,signalElements])
-    
+    plt.xlim([0,signalElements]) 
+
     line, = subplot.plot(xaxis, data, 'r-', color = 'white')
-    #subplot.hold(True)
-    fig.canvas.draw()  
-    fig.show(False)
-    plot_bg = fig.canvas.copy_from_bbox(subplot.bbox)
-    # cache the background
+    plt.show(block=False)
 
 def replotSpectra():
     global fig
     global line
-    global subplot
-    global plot_bg
 #    line.set_xdata(xaxis)
     line.set_ydata(data)  # update the data
-    # restore background
-    fig.canvas.restore_region(plot_bg)
-    # redraw just the graph
-    subplot.draw_artist(line)
-    # fill in the axes rectangle
-    fig.canvas.blit(subplot.bbox)
-    
-    #fig.canvas.draw()#.plot(xaxis, data, color = 'white', lw=1)
-    #plt.pause(0.00001)
+    fig.canvas.draw()#.plot(xaxis, data, color = 'white', lw=1)
     #plt.draw() # update the plot
 
 def plotSpectra():
@@ -209,7 +176,7 @@ mcu.sendBreak()
 os.system('cls')
 getNewSample()
 
-print((sum(b"aaa")+1)%256)
+
 #plt.ion()
 
 while(1):
