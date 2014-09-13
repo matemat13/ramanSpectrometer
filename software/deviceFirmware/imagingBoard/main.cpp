@@ -66,11 +66,12 @@ void send_data()
 {
  LED = 1;
  bool all_sent = false;
- int chunk_len = 180;
+ int chunk_len = 64;
  int total_len = 7296;
  int byte_n = 0;
  int to_send = 0;
  int oldsent;
+ int checksum;
  
  for (char chunk_n = 0; chunk_n < total_len/chunk_len+1; chunk_n++)
  {
@@ -79,15 +80,23 @@ void send_data()
          to_send = total_len;
      else
          to_send += chunk_len;
+     
      all_sent = false;
      
      while (!all_sent)
      {
+      checksum = 0;
+      
       raspi.putc(chunk_n);
       for (; byte_n < to_send; byte_n++)
       {
+       checksum += b_pixelValue[byte_n];
        raspi.putc(b_pixelValue[byte_n]);
       }
+      
+      checksum += 1;
+      raspi.putc(checksum%256);
+      
       if (raspi.getc() == 'y')
       {
        all_sent = true;
@@ -204,7 +213,7 @@ int main()
 
     raspi.baud(BAUDRATE);
     
-    //Set parity to odd
+    //Set parity to odd - produces garbage for some reason
     //USART2->CR1 &= 0xFFFFF9FF;
     //USART2->CR1 |= 0x00000600;
     
@@ -234,14 +243,6 @@ int main()
             case 'i':
                 print_info();
                 break;
-            /*case 'b':
-                mode = mode_binary;
-                raspi.printf("Textual mode off.\r\n");
-                break;
-            case 't':
-                mode = mode_textual;
-                raspi.printf("Textual mode on.\r\n");
-                break;*/
             case 'g':
                 LED = 1;
                 send_data();
