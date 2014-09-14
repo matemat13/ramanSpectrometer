@@ -19,19 +19,35 @@ xaxis = range(0, signalElements)
 data = [0]*signalElements
 line = ""
 
-
-mcu = serial.Serial('COM8', 470588, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_TWO, timeout=0.04, xonxoff=False, rtscts=True)
+#470588#921600#460800
+mcu = serial.Serial('COM8', 460800, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_TWO, timeout=0.04, writeTimeout=1, xonxoff=False, rtscts=True)
 
 
 def killOldData():																																	# set the file mode to append binary
      global data
      data = [0]*signalElements
 
+def toMenu():
+  inMenu = False
+  while not inMenu:
+    mcu.write(b'm')
+    while mcu.inWaiting() > 0:
+      a = mcu.readline()
+      #print(a)
+      if b"Menu" in a:
+        #print("In menu")
+        inMenu = True
+        break
+  if mcu.inWaiting() > 0:
+    while mcu.inWaiting() > 0:
+      mcu.read(mcu.inWaiting())
+      time.sleep(0.02)
+
 def getSpectra3():
         global data    
     #with serial.Serial('COM8', 921600, serial.EIGHTBITS, serial.PARITY_NONE, serial.STOPBITS_ONE, timeout=0.02) as mcu: 												# setup serial for communication to Nucelo
 
-        chunk_len = 512;
+        chunk_len = 522;
         total_len = 7296;
         to_read = chunk_len;
         buffer = b''
@@ -42,12 +58,20 @@ def getSpectra3():
         all_read = 0
         delay_t = 0.005
         
-        mcu.flush()
-        mcu.flushInput()
-        mcu.flushOutput()
+        
         start_T = time.clock()
         mcu.write(b'g')
-        time.sleep(delay_t)
+        while True:
+          a = mcu.readline()
+          if b"Sending data." in a:
+            break
+          if mcu.inWaiting() == 0:
+            errors = errors + 1
+            time.sleep(0.02)
+          if errors > 5:
+            print("Failed to sync.")
+            toMenu()
+            return False
         
         
        # time.sleep(0.024)
@@ -57,15 +81,24 @@ def getSpectra3():
             
             read_ok = True
            
-            #read the checksum number
-            buffer = mcu.read(1)
             
+            mcu.write(b'c')
+            a = b""
+            mcu.flush()
+            mcu.flushInput()
+            mcu.flushOutput()
+            mcu.write(bytes([i]))
+            #print(b"Written: " + bytes([i]))
+            time.sleep(0.001)
+            
+            buffer = mcu.read(1)
             if (len(buffer) == 0 or buffer[0] != i):
                 read_ok = False
                 if (len(buffer) != 0):
                   print("Chunk number read: %d, should be: %d. Data remaining: %d" % (buffer[0], i, mcu.inWaiting()))
+                  print("remaining: " + str(mcu.read(mcu.inWaiting())))
                 else:
-                  print("Chunk number timed out")
+                  print("Chunk number timed out in c. %d" % i)
             else:
                 buffer = mcu.read(to_read)
                 read = len(buffer)
@@ -75,45 +108,50 @@ def getSpectra3():
                 if (len(checksum) == 0 or checksum[0] != (sum(buffer)+1)%256):
                   read_ok = False
                   if (len(checksum) != 0):
-                    print("Checksum read: %d, should be: %d" % (checksum[0], (sum(buffer)+1)%256))
+                    print("Checksum read: %d, should be: %d. Data remaining: %d" % (checksum[0], (sum(buffer)+1)%256, mcu.inWaiting()))
+                    mcu.read(mcu.inWaiting())
                   else:
                     print("Checksum timed out")
             else:
                 if (read_ok):
-                  print("Read only %dB of %d in cycle %d" % (read,to_read,i))
+                  print("Read only %dB of %dB in cycle %d" % (read,to_read,i))
                 read_ok = False
                 
             if read_ok:
-                mcu.flushInput()
-                mcu.flushOutput()
-                time.sleep(delay_t)
+                #mcu.flushInput()
+                #mcu.flushOutput()
+                #time.sleep(delay_t)
                # print("Cycle: %d OK" %i)
-                mcu.write(b'y')
+                #resp = (b'y')
                 #time.sleep(delay_t)
                 #print(" --written");
                 i = i+1
                 main_bfr = main_bfr + buffer
             else:
                 errors = errors+1
+                print("ERROR")
+                toMenu()
+                return False
                 #print("Read only %dB of %d in cycle %d" % (read,to_read,i))
                 #mcu.read(mcu.inWaiting())
-                mcu.flushInput()
-                mcu.flushOutput()
+                #mcu.flushInput()
+                #mcu.flushOutput()
                 #print("writing r cycle: %d" %i)
-                time.sleep(delay_t)
-                mcu.write(b'r')
+                #time.sleep(delay_t)
+                #resp = (b'r')
                 #time.sleep(delay_t)
                 #print(" --written");
             if i == int(total_len/chunk_len+1):
                 all_read = True
         
-        
+        toMenu()
         delta_T = time.clock() - start_T
-        print ("errors: %d, duration: %fs" % (errors, delta_T))
+        print ("duration: %fs" % (delta_T))
         #print("read: %d" %len(main_bfr))
         fmt = "<%dh" % (3648)
         data = struct.unpack(fmt, main_bfr)
         mcu.write(b's')
+        return True
 
 def moveon(event):
     plt.close()
@@ -158,7 +196,7 @@ def replotSpectra():
     fig.canvas.blit(subplot.bbox)
     
     #fig.canvas.draw()#.plot(xaxis, data, color = 'white', lw=1)
-    plt.pause(0.00001)
+    plt.pause(0.0001)
     #plt.draw() # update the plot
 
 def plotSpectra():
@@ -191,13 +229,20 @@ def getNewSample():
 
 def continuousPlot():
     setupPlot()
+    errors = 0
+    frames = 0
     while (True):
-        getSpectra3()
-        replotSpectra()
+        frames = frames + 1
+        if getSpectra3():
+          replotSpectra()
+        else:
+          errors = errors + 1
+        print("Errornes: %f%%"%(errors/(frames/100)))
 
 def startSpectraCapture():
             print ("Aquiring spectra......")
-            getSpectra3()
+            while not getSpectra3():
+              print("Retrying")
             #if (ping_pong_com == 0):
              #  getSpectraFast()
             #else:
@@ -214,7 +259,9 @@ plot_Title = 'meridianScientific DIY 3D Printable RaspberryPi Raman Spectrometer
 
 mcu.sendBreak()
 os.system('cls')
+toMenu()
 getNewSample()
+toMenu()
 
 #plt.ion()
 
@@ -229,6 +276,7 @@ while(1):
      print ("2 - Get new sample from CCD")
      print ("3 - Plot continuously")
      req = input("Enter your choice..")
+     
      
      print(req)
      if req == "1":

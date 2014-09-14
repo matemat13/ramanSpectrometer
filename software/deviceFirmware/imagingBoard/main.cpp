@@ -64,20 +64,32 @@ short readShort()
 //sends the buffered data over serial port in chunks
 void send_data()
 {
- LED = 1;
  bool all_sent = false;
- int chunk_len = 512;
+ unsigned char chunk_n;
+ char ch;
+ int chunk_len = 522;
  int total_len = 7296;
- int byte_n = 0;
  int to_send = 0;
- int oldsent;
+ bool ok;
  int checksum;
  
- shiftGate_int.disable_irq();
+ //shiftGate_int.disable_irq();
  
- for (char chunk_n = 0; chunk_n < total_len/chunk_len+1; chunk_n++)
+ while ((ch = raspi.getc()) != 'c')
  {
-     oldsent = to_send;
+  if (ch == 'm')
+   return;
+  raspi.putc('r');
+ }
+ 
+ 
+ while (!all_sent)
+ {
+     //oldsent = to_send;
+     ok = true;
+     chunk_n = raspi.getc();
+     raspi.putc(chunk_n);
+     
      if (chunk_n == total_len/chunk_len)
          to_send = total_len;
      else
@@ -85,85 +97,51 @@ void send_data()
      
      all_sent = false;
      
-     while (!all_sent)
+     //while (!all_sent)
      {
       wait_ms(2);
       checksum = 0;
       
       
-      raspi.putc(chunk_n);
-      for (; byte_n < to_send; byte_n++)
+      //raspi.putc(chunk_n);
+      for (int byte_n = chunk_len*chunk_n; byte_n < to_send; byte_n++)
       {
        checksum += b_pixelValue[byte_n];
        raspi.putc(b_pixelValue[byte_n]);
+       if (raspi.readable())
+       {
+        ok = false;
+        break;
+       }
       }
       
-      checksum += 1;
-      raspi.putc(checksum%256);
+      if (ok)
+      {
+       checksum += 1;
+       raspi.putc(checksum%256);
+      }
       
-      if (raspi.getc() == 'y')
+      ch = raspi.getc();
+      if (ch == 'm')
       {
-       all_sent = true;
-      } else
+       return;
+      } else if (ch != 'c')
       {
-       byte_n = oldsent;
+       while ((ch = raspi.getc()) != 'c')
+       {
+        if (ch == 'm')
+         return;
+        raspi.putc('r');
+       }
+       
+       while (raspi.readable())
+        raspi.getc();
       }
      }
  }
- /*
- while (!all_sent)
- {
-   for (; chunk_n < total_len/chunk_len+1; chunk_n++)
-   {
-    // oldsent = to_send;
-     if (chunk_n == total_len/chunk_len)
-         to_send = total_len;
-     else
-         to_send += chunk_len;
-     
-     chunk_sent = false;
-     
-     while (!chunk_sent)
-     {
-      checksum = 0;
-      
-      raspi.putc(chunk_n);
-      for (; byte_n < to_send; byte_n++)
-      {
-       //checksum += b_pixelValue[byte_n];
-       //raspi.putc(b_pixelValue[byte_n]);
-       checksum += chunk_n + 3;
-       raspi.putc(chunk_n + 3);
-      }
-      
-      checksum += 1;
-      raspi.putc(checksum%256);
-      
-      if (raspi.readable() && raspi.getc() == 'r')
-      {
-       chunk_n = raspi.getc();
-       byte_n = chunk_len*chunk_n;
-      } else
-      {
-       chunk_sent = true;
-      }
-      wait_ms(15);
-     }
-   }
-   if (raspi.getc() != 'y')
-   {
-    chunk_n = raspi.getc();
-    byte_n = chunk_len*chunk_n;
-    wait_ms(15);
-   } else
-   {
-    all_sent = true;
-   }
- }*/
  
- shiftGate_int.enable_irq();
+ //shiftGate_int.enable_irq();
  
- LED = 0;
 }
 
 //main sampling function
@@ -289,6 +267,7 @@ int main()
          continue;
         }
         
+        raspi.printf("Menu.\r\n");
         char c = raspi.getc();
         
         switch (c) {
@@ -302,11 +281,14 @@ int main()
                 break;
             case 'g':
                 LED = 1;
+                raspi.printf("Sending data.\r\n");
                 send_data();
                 LED = 0;
                 break;
             case 'h':
                 print_usage();
+                break;
+            case 'm':
                 break;
             default:
                 raspi.printf("Unexpected character: %c\r\n", c);
