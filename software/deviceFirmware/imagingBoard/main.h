@@ -19,12 +19,12 @@ enum readOutState
  ro_finish,
  ro_idle
 };
-/*
+
 enum modeType
 {
  mode_textual,
  mode_binary
-};*/
+};
 
 // sensitivity
 // this determines the time (in us) the CCD will wait after each reading
@@ -42,7 +42,7 @@ int leadShieldedElements    = 13;
 int headerElements          = 3;
 const int signalElements    = 3648;
 int trailingDummyElements   = 14;
-
+modeType mode;
 
 #define MV(x) ((0xFFF*x)/3300)
 

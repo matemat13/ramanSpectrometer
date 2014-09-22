@@ -11,8 +11,7 @@ import os
 
 
 uC_endianity = 'little_endian'
-uC_ADC_bit_count = 12
-uC_ADC_max_val = pow(2, uC_ADC_bit_count)-1
+uC_ADC_max_val = 65536-1
 signalElements = 3648
 
 xaxis = range(0, signalElements)
@@ -59,7 +58,6 @@ def getSpectra3():
         delay_t = 0.005
         
         
-        start_T = time.clock()
         mcu.write(b'g')
         while True:
           a = mcu.readline()
@@ -145,10 +143,8 @@ def getSpectra3():
                 all_read = True
         
         toMenu()
-        delta_T = time.clock() - start_T
-        print ("duration: %fs" % (delta_T))
         #print("read: %d" %len(main_bfr))
-        fmt = "<%dh" % (3648)
+        fmt = "<%dH" % (3648)
         data = struct.unpack(fmt, main_bfr)
         mcu.write(b's')
         return True
@@ -231,13 +227,18 @@ def continuousPlot():
     setupPlot()
     errors = 0
     frames = 0
+    
     while (True):
         frames = frames + 1
+        start_T = time.clock()
         if getSpectra3():
+          #print(data)
           replotSpectra()
         else:
           errors = errors + 1
         print("Errornes: %f%%"%(errors/(frames/100)))
+        delta_T = time.clock() - start_T
+        print ("FPS: %fHz" % (1/delta_T))
 
 def startSpectraCapture():
             print ("Aquiring spectra......")

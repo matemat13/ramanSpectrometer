@@ -1,6 +1,8 @@
 #include "mbed.h"
 
+#include <vector>
 #include "main.h"
+
 //  ***   BE SURE TO TEST BEFORE AND AFTER FOR 'IDLING'... CLEAR THE CCD EVERY OTHER FRAME TO TRY AND ELIMINATE NOISE BUILDUP
 //From http://www.ing.iac.es/~docs/ins/das/ins-das-29/integration.html
 //"Idling" vs. integrating
@@ -38,7 +40,7 @@ int pixelCount; //the current count of pixels read
 readOutState state; //current state of sample readout
 //modeType mode;  //not used
 
-short pixelValue[signalElements];
+unsigned short pixelValue[signalElements];
 const char *b_pixelValue = (char*)pixelValue;   //just a byte pointer for binary access to the data
 /*UNUSED
 unsigned char calculate_checksum(ro_packet packet)
@@ -61,8 +63,50 @@ short readShort()
  return raspi.getc() + raspi.getc()*256;
 }*/
 
-//sends the buffered data over serial port in chunks
-void send_data()
+//sends the buffered data over serial port in lines as text
+void send_data_textual()
+{
+ std::vector<int> resend;
+ //bool all_sent = false;
+ int tmp;
+ char ch;
+ 
+ //wait for sync
+ while ((ch = raspi.getc()) != 'c')
+ {
+  if (ch == 'm')
+   return;
+  raspi.putc('r');
+ }
+ 
+ for (int i = 0; i < signalElements; i++)
+ {
+  raspi.printf("%d:%d:%d\r\n", i, pixelValue[i], i+pixelValue[i]);
+ }
+ 
+ while (true)
+ { 
+  if (raspi.getc() == 'r')
+  {
+   do
+   {
+    raspi.scanf("%i", &tmp);
+    resend.push_back(tmp);
+   } while (raspi.getc() == 'r');
+  } else
+  {
+   break;
+  }
+  
+  for (std::vector<int>::iterator it = resend.begin() ; it != resend.end(); ++it)
+   raspi.printf("%d:%d:%d\r\n", (*it), pixelValue[(*it)], (*it)+pixelValue[(*it)]);
+  
+  resend.clear();
+ }
+}
+
+//sends the buffered data over serial port in chunks as bytes
+void send_data_binary()
 {
  bool all_sent = false;
  unsigned char chunk_n;
@@ -228,7 +272,11 @@ void print_usage()
 
 void print_info()
 {
- raspi.printf("Imaging board v%3.1f\r\nADC: %dbit\r\nn of signal elements: %d", SW_VERSION, ADC_BIT_COUNT, signalElements);
+ raspi.printf("Imaging board v%3.1f\r\nADC: %dbit\r\nn of signal elements: %d\r\nCommunication mode: ", SW_VERSION, ADC_BIT_COUNT, signalElements);
+ if (mode == mode_binary)
+  raspi.printf("binary");
+ else
+  raspi.printf("textual");
  raspi.printf("\r\nSensitivity: %dus\r\nByte ordering: "BYTE_ORDERING"\r\nSize of one pixel: %dB\r\n", sensitivity, sizeof(short));
 }
 
@@ -238,7 +286,7 @@ int main()
     LED = 0;
     pixelCount = 0;
     state = ro_idle;
-    //mode = mode_binary;
+    mode = mode_binary;
 
     masterClock.period_us(masterFreq_period);
     masterClock.pulsewidth_us(masterFreq_width);
@@ -282,8 +330,20 @@ int main()
             case 'g':
                 LED = 1;
                 raspi.printf("Sending data.\r\n");
-                send_data();
+                if (mode == mode_binary)
+                {
+                 send_data_binary();
+                } else
+                {
+                 send_data_textual();
+                }
                 LED = 0;
+                break;
+            case 'b':
+                mode = mode_binary;
+                break;
+            case 't':
+                mode = mode_textual;
                 break;
             case 'h':
                 print_usage();
